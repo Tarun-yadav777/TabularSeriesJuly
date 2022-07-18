@@ -1,4 +1,3 @@
-from doctest import master
 import pandas as pd
 from kmeans import getNCluster, getSubmissionFile
 from sklearn.cluster import KMeans

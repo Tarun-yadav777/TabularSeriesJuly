@@ -3,8 +3,7 @@ import matplotlib.pyplot as plt
 import scipy.stats as stats
 import seaborn as sns
 import pandas as pd
-from scipy.__config__ import get_info
-from sklearn.preprocessing import MinMaxScaler, StandardScaler, PowerTransformer, QuantileTransformer, RobustScaler
+
 
 def dataInfo(data):
     print('No. of features -> {}'.format(data.shape[1]))
@@ -13,19 +12,6 @@ def dataInfo(data):
     getCategoricalColAndNunique(data)
     print('No. of Null Values -> {}'.format(data.isnull().sum().sum()))
 
-def trasnformData(data, transformerType):
-    if transformerType.lower() == 'minmax':
-        transformerObj = MinMaxScaler()
-    elif transformerType.lower() == 'standrdnormal':
-        transformerObj = StandardScaler()
-    elif transformerType.lower() == 'power':
-        transformerObj = PowerTransformer()
-    elif transformerType.lower() == 'quantiles':
-        transformerObj = QuantileTransformer(n_quantiles=10, random_state=0)
-    elif transformerType.lower() == 'robusst':
-        transformerObj = RobustScaler()
-    data = transformerObj(data)
-    return data, transformerObj
 
 def getCategoricalColAndNunique(data):
     for colName in data.columns:

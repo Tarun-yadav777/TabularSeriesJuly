@@ -111,7 +111,7 @@ if __name__ == '__main__':
     inputData.drop('id', axis=1, inplace=True)
     kCluster = getNCluster(inputData) 
     #clusterModel = GaussianMixture(n_components=kCluster, random_state=0)
-    clusterModel = BayesianGaussianMixture(n_components=kCluster, random_state=42, max_iter=300, n_init=5)
+    clusterModel = BayesianGaussianMixture(n_components=kCluster, random_state=0, n_init=10)
     
     
     
