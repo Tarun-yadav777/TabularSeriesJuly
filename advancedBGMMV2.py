@@ -9,6 +9,7 @@ import lightgbm as lgb
 import xgboost as xgb
 from catboost import CatBoost, Pool
 from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.discriminant_analysis import QuadraticDiscriminantAnalysis
 from sklearn.naive_bayes import GaussianNB
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
@@ -57,7 +58,7 @@ for n in range(7):
 idxs = np.array([])
 for n in range(7):
     median = scaledData[scaledData.predict==n]['predict_proba'].median()
-    idx = scaledData[(scaledData.predict==n) & (scaledData.predict_proba > 0.80)].index
+    idx = scaledData[(scaledData.predict==n) & (scaledData.predict_proba > 0.70)].index
     idxs = np.concatenate((idxs, idx))
     print(f'Class n{n}  |  Median : {median:.4f}  |  Training data : {len(idx)/len(scaledData[(scaledData.predict==n)]):.1%}')
 
@@ -97,17 +98,17 @@ params_ctb = {
     
 }
 
-
 lgb_predict_proba = 0
 xgb_predict_proba = 0
 ctb_predict_proba = 0
 etc_predict_proba = 0
+qda_predict_proba = 0
 gnb_predict_proba = 0
 svc_predict_proba = 0
 knc_predict_proba = 0
 classif_scores = []
 
-skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=0)
+skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=0,)
 
 for fold, (trn_idx, val_idx) in enumerate(skf.split(X, y)):
     print(f"===== fold{fold} =====")
@@ -149,7 +150,7 @@ for fold, (trn_idx, val_idx) in enumerate(skf.split(X, y)):
                       early_stopping_rounds=300,
                      )
 
-    y_pred_proba = model.predict(xgb_valid, iteration_range=(0, model.best_ntree_limit))
+    y_pred_proba = model.predict(xgb_valid)
     y_pred = np.argmax(y_pred_proba, axis=1)
 
     s = getScore(y_valid, y_pred, y_pred_proba)
@@ -158,34 +159,9 @@ for fold, (trn_idx, val_idx) in enumerate(skf.split(X, y)):
 
     xgb_predict_proba += model.predict(
         xgb.DMatrix(scaledData[usefulFeatures]),
-        iteration_range=(0, model.best_ntree_limit)
     ) / 10
 
     del xgb_train, xgb_valid, model, s, y_pred, y_pred_proba
-    gc.collect()
-    
-    # catboost
-    ctb_train = Pool(X_train, y_train)
-    ctb_valid = Pool(X_valid, y_valid)
-    
-    model = CatBoost(params_ctb)
-    model.fit(ctb_train,
-              eval_set=[ctb_valid],
-              verbose_eval=False,
-              early_stopping_rounds=300,
-              use_best_model=True
-             )
-    
-    y_pred_proba = model.predict(ctb_valid, prediction_type='Probability')
-    y_pred = np.argmax(y_pred_proba, axis=1)
-    
-    s = getScore(y_valid, y_pred, y_pred_proba)
-    print(f"CatBoost   AUC : {s[1]:.3f} | Accuracy : {s[0]:.1%}")
-    classif_scores.append(s)
-
-    ctb_predict_proba += model.predict(Pool(scaledData[usefulFeatures]),  prediction_type='Probability') / 10
-    
-    del ctb_train, ctb_valid, model, s, y_pred, y_pred_proba
     gc.collect()
     
     # ExtraTreesClassifier
@@ -200,22 +176,6 @@ for fold, (trn_idx, val_idx) in enumerate(skf.split(X, y)):
     classif_scores.append(s)
 
     etc_predict_proba += model.predict_proba(scaledData[usefulFeatures]) / 10
-
-    del model, s, y_pred, y_pred_proba
-    gc.collect()
-
-    # Gaussian Naïve Bayes
-    model = GaussianNB(var_smoothing=.1)
-    model.fit(X_train, y_train)
-
-    y_pred = model.predict(X_valid)
-    y_pred_proba = model.predict_proba(X_valid)
-
-    s = getScore(y_valid, y_pred, y_pred_proba)
-    print(f"GaussianNB AUC : {s[1]:.3f} | Accuracy : {s[0]:.1%}")
-    classif_scores.append(s)
-
-    gnb_predict_proba += model.predict_proba(scaledData[usefulFeatures]) / 10
 
     del model, s, y_pred, y_pred_proba
     gc.collect()
@@ -254,9 +214,7 @@ for fold, (trn_idx, val_idx) in enumerate(skf.split(X, y)):
 
 scores.append(getLabelScores(np.argmax(lgb_predict_proba, axis=1), scaledData, "LightGBM"))
 scores.append(getLabelScores(np.argmax(xgb_predict_proba, axis=1), scaledData, "XGBoost"))
-scores.append(getLabelScores(np.argmax(ctb_predict_proba, axis=1), scaledData, "CatBoost"))
 scores.append(getLabelScores(np.argmax(etc_predict_proba, axis=1), scaledData, "ExtraTrees"))
-scores.append(getLabelScores(np.argmax(gnb_predict_proba, axis=1), scaledData, "GaussianNaïveBayes"))
 scores.append(getLabelScores(np.argmax(svc_predict_proba, axis=1), scaledData, "SVC"))
 scores.append(getLabelScores(np.argmax(knc_predict_proba, axis=1), scaledData, "KNeighbors"))
 
@@ -274,9 +232,7 @@ def soft_voting(preds_probas):
 sv_predict = soft_voting((
     (lgb_predict_proba, 0.0),
     (xgb_predict_proba, 0.75),
-    (ctb_predict_proba, 0.0),
     (etc_predict_proba, 1.0),
-    (gnb_predict_proba, 0.0),
     (svc_predict_proba, 1.0),
     (knc_predict_proba, 1.0),
 ))
@@ -285,7 +241,6 @@ scores.append(getLabelScores(sv_predict, scaledData, "Soft voting"))
 
 allScores_df = pd.DataFrame(scores, columns=["Model", "silhouette", "Calinski_Harabasz", "Davis_Bouldin"])
 allScores_df.to_csv("modelScores.csv", index=False)
-allScores_df
 
 
 
